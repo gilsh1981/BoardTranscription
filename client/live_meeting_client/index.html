@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>BoardTranscriber — תמלול מקוון</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <style>
+    body {
+      margin: 0;
+      font-family: "Heebo", Arial, sans-serif;
+      background-color: #232323;
+      color: #EAEAEA;
+      direction: rtl;
+      text-align: center;
+    }
+    header {
+      background-color: #0D0F12;
+      padding: 10px 20px;
+      border-bottom: 2px solid #FF7B35;
+    }
+    header img { height: 40px; vertical-align: middle; }
+    main { padding-top: 60px; }
+    button {
+      padding: 10px 24px;
+      margin: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      background-color: #FF7B35;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover:not(:disabled) { background-color: #ff924f; }
+    button:disabled { background-color: #555; cursor: not-allowed; }
+    #status { margin-top: 15px; font-weight: bold; color: #FF7B35; }
+    #transcript {
+      margin: 30px auto;
+      width: 80%;
+      max-width: 800px;
+      height: 300px;
+      background: #1C1C1C;
+      border: 1px solid #3A3A3A;
+      border-radius: 8px;
+      padding: 15px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      text-align: right;
+      color: #EAEAEA;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="../assets/boardtranscriber_logo_header.svg" alt="BoardTranscriber">
+  </header>
+  <main>
+    <button id="start">התחל הקלטה</button>
+    <button id="stop" disabled>עצור ושלח</button>
+    <div id="status">מוכן</div>
+    <div id="transcript">כאן יופיע התמלול בזמן אמת...</div>
+  </main>
+
+  <script>
+    let mediaRecorder, ws;
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    const status = document.getElementById("status");
+    const transcript = document.getElementById("transcript");
+
+    startBtn.onclick = async () => {
+      try {
+        ws = new WebSocket("ws://localhost:8080");
+        ws.onopen = async () => {
+          status.textContent = "בהקלטה...";
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+          mediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) e.data.arrayBuffer().then(buf => ws.send(new Uint8Array(buf)));
+          };
+          mediaRecorder.start(250);
+        };
+        ws.onmessage = e => {
+          const msg = JSON.parse(e.data);
+          if (msg.status === "ok") {
+            transcript.textContent = msg.transcript;
+            status.textContent = "התמלול הושלם.";
+          } else status.textContent = "שגיאה במהלך התמלול.";
+        };
+        ws.onclose = () => {
+          status.textContent = "החיבור נסגר.";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        };
+      } catch (err) {
+        status.textContent = "שגיאה בגישה למיקרופון.";
+        console.error(err);
+      }
+    };
+    stopBtn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        ws.send("end");
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        status.textContent = "מעבד תמלול...";
+      }
+    };
+  </script>
+</body>
+</html>
+
