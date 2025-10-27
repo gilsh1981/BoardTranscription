@@ -1,158 +1,152 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Mic } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 export default function DiscussionRecording() {
-  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [audioURL, setAudioURL] = useState(null);
+  const [discussionInfo, setDiscussionInfo] = useState(null);
   const [time, setTime] = useState(0);
-  const [pulse, setPulse] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  const [polling, setPolling] = useState(false);
+
   const mediaRecorderRef = useRef(null);
-  const recordedChunks = useRef([]);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const navigate = useNavigate();
 
+  // ✅ טוען את פרטי הדיון מה-sessionStorage
   useEffect(() => {
-    let timer;
-    if (isRecording) timer = setInterval(() => setTime((t) => t + 1), 1000);
-    return () => clearInterval(timer);
-  }, [isRecording]);
+    const info = sessionStorage.getItem("discussionData");
+    if (info) setDiscussionInfo(JSON.parse(info));
+  }, []);
 
-  useEffect(() => {
-    let pulseTimer;
-    if (isRecording) pulseTimer = setInterval(() => setPulse((p) => !p), 600);
-    return () => clearInterval(pulseTimer);
-  }, [isRecording]);
-
-  const formatTime = (t) => {
-    const h = String(Math.floor(t / 3600)).padStart(2, "0");
-    const m = String(Math.floor((t % 3600) / 60)).padStart(2, "0");
-    const s = String(t % 60).padStart(2, "0");
-    return `${h}:${m}:${s}`;
+  // עיצוב זמן (00:mm:ss)
+  const formatTime = (seconds) => {
+    const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const s = String(seconds % 60).padStart(2, "0");
+    return `00:${m}:${s}`;
   };
 
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      recordedChunks.current = [];
+  // התחלת הקלטה
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+    chunksRef.current = [];
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.current.push(e.data);
-      };
+    mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data);
 
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks.current, { type: "audio/webm" });
-        const filename = `live_${Date.now()}.webm`;
-        uploadRecordedFile(blob, filename);
-      };
+    mediaRecorder.onstop = async () => {
+      clearInterval(timerRef.current);
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
 
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      setTime(0);
-    } catch (err) {
-      console.error("Microphone access denied:", err);
-    }
-  }
+      // ✅ נשתמש בשם נושא הדיון מהטופס
+      const fileName =
+        discussionInfo?.topic?.replace(/\s+/g, "_") || `discussion_${Date.now()}`;
 
-  function stopRecording() {
+      try {
+        const formData = new FormData();
+        formData.append("audio", blob, `${fileName}.webm`);
+
+        // ✅ זה השינוי הקריטי – מתאימים לשדות שהשרת מצפה להם
+        formData.append("topic", discussionInfo?.topic || "דיון ללא שם");
+        formData.append("leaderName", discussionInfo?.leaderName || "לא צוין");
+        formData.append("language", discussionInfo?.language || "עברית");
+        formData.append("duration", formatTime(time));
+
+        setPolling(true);
+
+        await axios.post("http://localhost:3000/api/upload-audio", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        alert("✅ ההקלטה נשמרה ונשלחה לעיבוד!");
+      } catch (err) {
+        console.error("❌ שגיאה בשליחת ההקלטה:", err);
+        alert("❌ שגיאה בשליחת ההקלטה לשרת");
+      } finally {
+        setPolling(false);
+        navigate("/");
+      }
+    };
+
+    mediaRecorder.start();
+    setRecording(true);
+    setTime(0);
+    timerRef.current = setInterval(() => setTime((t) => t + 1), 1000);
+  };
+
+  // עצירת הקלטה
+  const stopRecording = () => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
+      setRecording(false);
     }
-  }
-
-  async function uploadRecordedFile(fileBlob, filename) {
-    try {
-      const formData = new FormData();
-      formData.append("file", fileBlob, filename);
-
-      const response = await fetch("http://localhost:3000/api/transcribe/live", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (result.status === "ok") {
-        console.log("Transcription completed:", result.file);
-        setTranscript(result.transcriptPreview);
-      } else {
-        console.error("Transcription error:", result.details || "Unknown error");
-      }
-    } catch (error) {
-      console.error("Upload failed:", error);
-    }
-  }
+  };
 
   return (
     <div
       dir="rtl"
-      className="min-h-screen flex flex-col items-center justify-center p-10 bg-gradient-to-b from-white to-gray-100 relative overflow-hidden"
+      className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-[#f8f8f8] text-gray-800 font-[Heebo]"
     >
-      <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,rgba(255,182,193,0.5),rgba(255,165,0,0.2))]" />
-
-      <h1 className="text-4xl font-semibold text-gray-800 mb-10 z-10">מוכנים להקלטה</h1>
-
-      <div className="text-6xl font-mono text-gray-800 tracking-widest mb-8 z-10">
-        {formatTime(time)}
-      </div>
-
-      <div className="relative flex flex-col items-center gap-6 z-10">
-        <div
-          className={`relative w-48 h-48 flex items-center justify-center rounded-full transition-all duration-500 cursor-pointer ${
-            isRecording
-              ? "bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_50px_rgba(255,0,0,0.5)]"
-              : "bg-gradient-to-r from-pink-500 to-orange-400 shadow-[0_0_50px_rgba(255,105,180,0.4)]"
-          }`}
-          onClick={isRecording ? stopRecording : startRecording}
-        >
-          <Mic
-            size={70}
-            color="white"
-            className={`transition-all duration-300 ${
-              pulse && isRecording ? "scale-110 opacity-80" : "opacity-100"
-            }`}
-          />
-        </div>
+      {/* חזרה לדשבורד */}
+      <div className="absolute top-8 right-8">
         <button
-          onClick={isRecording ? stopRecording : startRecording}
-          className="text-lg font-medium text-gray-700 hover:text-pink-600 transition-colors"
+          onClick={() => navigate("/")}
+          className="bg-gradient-to-l from-[#ff6f00] to-[#b347ff] text-white py-2 px-5 rounded-lg font-bold shadow hover:opacity-90 transition"
         >
-          {isRecording ? "המערכת מאזינה..." : "לחץ כדי להתחיל הקלטה"}
+          ⬅️ חזרה לדשבורד
         </button>
       </div>
 
-      <button className="mt-10 px-8 py-3 text-gray-700 font-semibold text-lg border border-gray-300 rounded-full hover:bg-gray-100 transition-all z-10">
-        כיבוי מיקרופון
+      <h1 className="text-3xl font-bold text-[#b347ff] mb-8">מוכנים להקלטה</h1>
+      <div className="text-5xl font-mono mb-6">{formatTime(time)}</div>
+
+      <button
+        onClick={recording ? stopRecording : startRecording}
+        disabled={polling}
+        className={`w-32 h-32 rounded-full shadow-lg flex items-center justify-center text-5xl transition-all ${
+          recording
+            ? "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+            : "bg-gradient-to-l from-[#ff6f00] to-[#b347ff] hover:opacity-90 text-white"
+        } ${polling ? "opacity-50 cursor-not-allowed" : ""}`}
+      >
+        🎤
       </button>
 
-      <div className="flex flex-wrap justify-center gap-6 text-gray-700 text-lg mt-14 z-10">
-        <div className="bg-white border border-pink-100 rounded-2xl px-6 py-4 shadow-md">
-          נושא: <span className="font-semibold text-gray-900">ישיבת הנהלה</span>
-        </div>
-        <div className="bg-white border border-pink-100 rounded-2xl px-6 py-4 shadow-md">
-          מטרה: <span className="font-semibold text-gray-900">בדיקת יעדים</span>
-        </div>
-        <div className="bg-white border border-pink-100 rounded-2xl px-6 py-4 shadow-md">
-          שפה: <span className="font-semibold text-gray-900">עברית</span>
-        </div>
-      </div>
+      <p className="mt-4 text-gray-600">
+        {polling
+          ? "מעבד תמלול... אנא המתן"
+          : recording
+          ? "לחץ כדי לעצור את ההקלטה"
+          : "לחץ כדי להתחיל הקלטה"}
+      </p>
 
-      {isRecording && (
-        <button
-          onClick={stopRecording}
-          className="mt-16 py-4 px-12 bg-gradient-to-r from-pink-500 to-orange-400 text-white font-bold rounded-2xl shadow-lg hover:opacity-90 transition-all z-10"
-        >
-          סיים דיון ושמור תמלול
-        </button>
+      {/* פרטי דיון */}
+      {discussionInfo && (
+        <div className="mt-8 flex flex-col gap-2 text-center text-gray-700">
+          <div>
+            <strong>נושא:</strong> {discussionInfo.topic || "לא צוין"}
+          </div>
+          <div>
+            <strong>מטרה:</strong> {discussionInfo.purpose || "לא צוין"}
+          </div>
+          <div>
+            <strong>שפה:</strong> {discussionInfo.language || "עברית"}
+          </div>
+          <div>
+            <strong>מוביל:</strong> {discussionInfo.leaderName || "לא צוין"}
+          </div>
+        </div>
       )}
 
-      {transcript && (
-        <div className="mt-10 p-6 bg-white rounded-2xl shadow-lg w-3/4 text-right text-gray-800">
-          <h2 className="text-2xl font-bold mb-4">תמלול שהתקבל:</h2>
-          <pre className="whitespace-pre-wrap text-lg leading-relaxed">{transcript}</pre>
+      {/* תצוגה מקדימה */}
+      {audioURL && (
+        <div className="mt-6 w-[400px] text-center">
+          <p className="font-semibold mb-2">🎧 תצוגה מקדימה:</p>
+          <audio src={audioURL} controls className="w-full rounded-lg shadow" />
         </div>
       )}
     </div>
   );
 }
-

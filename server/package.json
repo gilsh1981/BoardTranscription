@@ -1,7 +1,6 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,9 +9,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@foliojs-fork/fontkit": "^1.9.2",
     "cors": "^2.8.5",
+    "docx": "^9.5.1",
     "express": "^5.1.0",
     "multer": "^2.0.2",
+    "pdfkit": "^0.17.2",
     "ws": "^8.18.3"
-  }
+  },
+  "description": ""
 }

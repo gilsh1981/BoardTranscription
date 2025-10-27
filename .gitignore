@@ -1,6 +1,33 @@
+# Node
 node_modules/
-venv/
-__pycache__/
-*.log
+**/node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# React build
+client-react/build/
+client-react/.cache/
+client-react/dist/
+
+# Backend outputs (לא בקוד)
 uploads/
 transcripts/
+server/uploads/
+server/transcripts/
+
+# מדיה ופלטים שלא רוצים בריפו
+*.wav
+*.mp3
+*.m4a
+*.webm
+*.mp4
+*.txt
+*.pdf
+*.docx
+
+# System / env
+.env
+.DS_Store
+Thumbs.db
+*.log
