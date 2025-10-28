@@ -1,34 +1,83 @@
-import React, { useState } from 'react';
-import { Upload, FileAudio, Loader2, Edit3, Scissors } from 'lucide-react';
+import React, { useState } from "react";
+import axios from "axios";
+import { Upload, FileAudio, Loader2, Scissors, FileDown, Save, FileText } from "lucide-react";
 
 export default function UploadRecording() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [showSegments, setShowSegments] = useState(false);
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [uploadedFile, setUploadedFile] = useState("");
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
   };
 
-  const handleUpload = () => {
-    if (!file) return;
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file || isUploading) return;
+
     setIsUploading(true);
-    setTimeout(() => {
+    try {
+      const formData = new FormData();
+      formData.append("audio", file);
+      formData.append("topic", title);
+      formData.append("leaderName", notes);
+
+      const response = await axios.post("http://localhost:3000/api/upload-audio", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (response.data.status === "ok") {
+        setTranscriptText(response.data.transcriptPreview || "");
+        setUploadedFile(response.data.filename);
+        setShowTranscript(true);
+      } else {
+        alert("שגיאה בעת עיבוד הקובץ.");
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert("שגיאה בעת שליחת הקובץ לשרת.");
+    } finally {
       setIsUploading(false);
-      setShowSegments(true);
-    }, 2500);
+    }
+  };
+
+  const handleSaveDiscussion = () => {
+    console.log("Saving discussion:", { title, notes, transcriptText });
+    alert("התמלול נשמר והועבר לדיונים ");
+  };
+
+  const handleDownloadWord = () => {
+    if (!uploadedFile) {
+      alert("אין קובץ להורדה.");
+      return;
+    }
+    const url = `http://localhost:3000/api/download-docx/${encodeURIComponent(uploadedFile)}`;
+    window.open(url, "_blank");
+  };
+
+  const handleDownloadPDF = () => {
+    if (!uploadedFile) {
+      alert("אין קובץ להורדה.");
+      return;
+    }
+    const url = `http://localhost:3000/api/download-pdf/${encodeURIComponent(uploadedFile)}?open=false`;
+    window.open(url, "_blank");
   };
 
   return (
-    <div dir="rtl" className="min-h-screen flex flex-col items-center justify-center p-10 bg-gradient-to-b from-white to-gray-100 relative overflow-hidden">
-      {/* Header */}
-      <h1 className="text-4xl font-semibold text-gray-800 mb-10 z-10 flex items-center gap-3">
+    <div
+      dir="rtl"
+      className="min-h-screen flex flex-col items-center justify-center p-10 bg-gradient-to-b from-white to-gray-100"
+    >
+      <h1 className="text-4xl font-semibold text-gray-800 mb-10 flex items-center gap-3">
         <Upload className="w-8 h-8 text-pink-500" /> העלאת הקלטה קיימת
       </h1>
 
-      {/* Upload area */}
+      {/* Upload Section */}
       <label
         htmlFor="audio-upload"
         className="w-full max-w-md flex flex-col items-center justify-center p-10 border-2 border-dashed border-pink-300 rounded-2xl cursor-pointer bg-white hover:bg-pink-50 transition-all shadow-sm"
@@ -46,44 +95,36 @@ export default function UploadRecording() {
             <p className="text-sm text-gray-400 mt-2">תומך בקבצי .wav, .mp3, .m4a, .ogg</p>
           </>
         )}
-        <input
-          type="file"
-          id="audio-upload"
-          accept="audio/*"
-          onChange={handleFileChange}
-          className="hidden"
-        />
+        <input type="file" id="audio-upload" accept="audio/*" onChange={handleFileChange} className="hidden" />
       </label>
 
-      {/* Discussion info inputs */}
+      {/* Discussion Info */}
       <div className="w-full max-w-md mt-10 bg-white p-6 rounded-2xl shadow-md border border-pink-100">
         <label className="block mb-3 text-gray-600 font-medium">נושא הדיון</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="לדוגמה: ישיבת צוות רבעונית"
+          placeholder="לדוגמה: ישיבת הנהלה"
           className="w-full mb-5 border rounded-lg p-3 focus:ring-2 focus:ring-pink-400 focus:outline-none"
         />
 
-        <label className="block mb-3 text-gray-600 font-medium">הערות נוספות</label>
+        <label className="block mb-3 text-gray-600 font-medium">מוביל הישיבה / הערות נוספות</label>
         <textarea
           rows="3"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="הוסף מידע נוסף על ההקלטה..."
+          placeholder="הוסף מידע נוסף..."
           className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-pink-400 focus:outline-none"
         />
       </div>
 
-      {/* Upload button */}
+      {/* Upload Button */}
       <button
         onClick={handleUpload}
         disabled={!file || isUploading}
         className={`mt-10 py-4 px-12 rounded-2xl font-bold text-white shadow-lg transition-all ${
-          file
-            ? 'bg-gradient-to-r from-pink-500 to-orange-400 hover:opacity-90'
-            : 'bg-gray-300 cursor-not-allowed'
+          file ? "bg-gradient-to-r from-pink-500 to-orange-400 hover:opacity-90" : "bg-gray-300 cursor-not-allowed"
         }`}
       >
         {isUploading ? (
@@ -91,46 +132,46 @@ export default function UploadRecording() {
             <Loader2 className="animate-spin w-6 h-6" /> מעלה ומעבד את הקובץ...
           </span>
         ) : (
-          'העלה והצג מקטעים'
+          "העלה והצג תמלול"
         )}
       </button>
 
-      {/* Back button */}
-      <button className="mt-6 text-gray-600 hover:text-pink-600 transition-all">
-        חזור למסך הראשי
-      </button>
-
-      {/* AI Segments view mockup */}
-      {showSegments && (
-        <div className="mt-12 w-full max-w-2xl bg-white p-8 rounded-2xl shadow-lg border border-pink-100 animate-fadeIn">
+      {/* Transcript Editor */}
+      {showTranscript && (
+        <div className="mt-12 w-full max-w-2xl bg-white p-8 rounded-2xl shadow-lg border border-pink-100">
           <h2 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
-            <Scissors className="w-6 h-6 text-pink-500" /> הצגת מקטעים לפי זיהוי AI
+            <Scissors className="w-6 h-6 text-pink-500" /> תמלול ראשוני
           </h2>
 
-          <div className="space-y-4 text-gray-700">
-            <div className="p-4 border rounded-xl bg-gray-50 hover:bg-pink-50 transition-all">
-              <p className="font-semibold">מקטע 1</p>
-              <p className="text-sm text-gray-600">00:00 - 01:20 | הצגת פתיחה ודברי פתיחה</p>
-            </div>
-            <div className="p-4 border rounded-xl bg-gray-50 hover:bg-pink-50 transition-all">
-              <p className="font-semibold">מקטע 2</p>
-              <p className="text-sm text-gray-600">01:21 - 03:45 | דיון בנושאים מרכזיים</p>
-            </div>
-            <div className="p-4 border rounded-xl bg-gray-50 hover:bg-pink-50 transition-all">
-              <p className="font-semibold">מקטע 3</p>
-              <p className="text-sm text-gray-600">03:46 - 06:00 | סיכום ונקודות פעולה</p>
-            </div>
+          <textarea
+            value={transcriptText}
+            onChange={(e) => setTranscriptText(e.target.value)}
+            rows="12"
+            className="w-full border rounded-xl p-4 text-gray-700 bg-gray-50 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+          />
+
+          <div className="flex flex-row justify-end gap-4 mt-6">
+            <button
+              onClick={handleSaveDiscussion}
+              className="py-3 px-8 bg-gradient-to-r from-pink-500 to-orange-400 text-white font-bold rounded-xl shadow hover:opacity-90 transition-all flex items-center gap-2"
+            >
+              <Save className="w-5 h-5" /> שמור והעבר לדיונים
+            </button>
+
+            <button
+              onClick={handleDownloadWord}
+              className="py-3 px-8 bg-gray-200 text-gray-800 font-semibold rounded-xl hover:bg-gray-300 transition-all flex items-center gap-2"
+            >
+              <FileDown className="w-5 h-5" /> הורד כ־Word
+            </button>
+
+            <button
+              onClick={handleDownloadPDF}
+              className="py-3 px-8 bg-gray-200 text-gray-800 font-semibold rounded-xl hover:bg-gray-300 transition-all flex items-center gap-2"
+            >
+              <FileText className="w-5 h-5" /> הורד כ־PDF
+            </button>
           </div>
-
-          <button className="mt-8 py-3 px-10 bg-gradient-to-r from-pink-500 to-orange-400 text-white font-bold rounded-xl shadow hover:opacity-90 transition-all">
-            התחל תמלול מלא
-          </button>
-        </div>
-      )}
-
-      {isUploading && (
-        <div className="mt-12 text-gray-500 text-lg animate-pulse">
-          🤖 AI מזהה את מבנה ההקלטה ומכין את המקטעים...
         </div>
       )}
     </div>
