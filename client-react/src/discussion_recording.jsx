@@ -40,19 +40,25 @@ export default function DiscussionRecording() {
       clearInterval(timerRef.current);
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
 
-      // ✅ נשתמש בשם נושא הדיון מהטופס
+      // ✅ שם קובץ לפי נושא הדיון
       const fileName =
         discussionInfo?.topic?.replace(/\s+/g, "_") || `discussion_${Date.now()}`;
 
       try {
         const formData = new FormData();
         formData.append("audio", blob, `${fileName}.webm`);
-
-        // ✅ זה השינוי הקריטי – מתאימים לשדות שהשרת מצפה להם
         formData.append("topic", discussionInfo?.topic || "דיון ללא שם");
         formData.append("leaderName", discussionInfo?.leaderName || "לא צוין");
         formData.append("language", discussionInfo?.language || "עברית");
         formData.append("duration", formatTime(time));
+
+        // 🟢 שורה קריטית — מזהה שההקלטה בוצעה כאן
+        formData.append("source", "recorded");
+
+        // רק לבדיקה - נרשום בקונסול
+        for (let [key, val] of formData.entries()) {
+          console.log("📦 formData:", key, val);
+        }
 
         setPolling(true);
 

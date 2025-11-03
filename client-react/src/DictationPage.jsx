@@ -1,26 +1,124 @@
-// DictationPage.jsx – מסך ההכתבה
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Edit3, Save, Trash2, FileText, Loader2, Mic, MicOff, Upload } from 'lucide-react';
 
+// כתובת WS לשרת vosk שלך (2700)
 export default function DictationPage() {
   const [segments, setSegments] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [time, setTime] = useState(0);
+  const [partial, setPartial] = useState("");
 
+  const wsRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const timerRef = useRef(null);
+
+  // טיימר
   useEffect(() => {
-    let timer;
     if (isRecording) {
-      timer = setInterval(() => setTime((t) => t + 1), 1000);
+      setTime(0);
+      timerRef.current = setInterval(() => setTime((t) => t + 1), 1000);
+    } else {
+      clearInterval(timerRef.current);
     }
-    return () => clearInterval(timer);
+    return () => clearInterval(timerRef.current);
   }, [isRecording]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
     const secs = (seconds % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
+  };
+
+  // התחלת הקלטה (LIVE)
+  const startRecording = async () => {
+    setSegments([]);
+    setPartial("");
+    setTime(0);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const ws = new window.WebSocket("ws://localhost:2700");
+      ws.binaryType = "arraybuffer";
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("✅ WS connected");
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = async (e) => {
+          if (e.data && e.data.size > 0 && ws.readyState === 1) {
+            try {
+              const buf = await e.data.arrayBuffer();
+              ws.send(buf);
+              console.log("🎤 sent chunk:", buf.byteLength);
+            } catch (err) {
+              console.error("שגיאה בשליחת chunk:", err);
+            }
+          }
+        };
+
+        mediaRecorder.start(1000); // שליחת chunk כל שנייה
+        setIsRecording(true);
+      };
+
+      // קבלת תמלול חי מהשרת
+      ws.onmessage = (event) => {
+        console.log("📩 msg:", event.data);
+        try {
+          const data = JSON.parse(event.data);
+          if (data.partial) setPartial(data.partial);
+          if (data.text || (data.result && data.result.text)) {
+            const text = data.text || data.result.text;
+            if (text?.trim()) {
+              setSegments((prev) => [
+                ...prev,
+                {
+                  id: Date.now(),
+                  start: time > 2 ? formatTime(time - 2) : formatTime(0),
+                  end: formatTime(time),
+                  text,
+                  editing: false,
+                  playing: false,
+                },
+              ]);
+              setPartial("");
+            }
+          }
+        } catch (e) {
+          console.warn("bad msg", e);
+        }
+      };
+
+      ws.onerror = (e) => console.error("❌ WS error", e);
+      ws.onclose = () => console.log("⚠️ WS closed");
+    } catch (err) {
+      console.error("mic error", err);
+      alert("אין אפשרות להפעיל מיקרופון. אפשר לאפשר גישה לדפדפן?");
+    }
+  };
+
+  // עצירת הקלטה
+  const stopRecording = () => {
+    setIsRecording(false);
+    clearInterval(timerRef.current);
+
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send("end");
+      wsRef.current.close();
+    }
+    setPartial("");
   };
 
   const togglePlay = (id) => {
@@ -70,13 +168,13 @@ export default function DictationPage() {
 
           <button
             onClick={() => setIsMuted(!isMuted)}
-            className={`p-4 rounded-full shadow text-gray-700 border border-gray-300 hover:bg-gray-100 transition-all`}
+            className="p-4 rounded-full shadow text-gray-700 border border-gray-300 hover:bg-gray-100 transition-all"
           >
             {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
           </button>
 
           <button
-            onClick={() => setIsRecording(!isRecording)}
+            onClick={isRecording ? stopRecording : startRecording}
             className={`px-10 py-4 text-white font-bold rounded-2xl shadow-lg text-lg transition-all ${
               isRecording
                 ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:opacity-90'
@@ -91,6 +189,13 @@ export default function DictationPage() {
           </button>
         </div>
       </div>
+
+      {/* LIVE PARTIAL */}
+      {isRecording && partial && (
+        <div className="text-xl text-pink-600 mb-6 font-mono bg-pink-50 rounded-lg px-6 py-2 animate-pulse">
+          {partial}
+        </div>
+      )}
 
       {/* Processing State */}
       {isProcessing && (

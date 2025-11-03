@@ -6,6 +6,7 @@ export default function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [formatModal, setFormatModal] = useState({ open: false, file: null });
   const [discussions, setDiscussions] = useState([]);
+  const [expandedRows, setExpandedRows] = useState([]);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
@@ -21,6 +22,24 @@ export default function Dashboard() {
       }
     }
   };
+
+  // פונקציה שמטפלת בכל פורמט תאריך
+  function parseDateFlexible(dateStr) {
+    if (!dateStr) return new Date(0);
+    // YYYY-MM-DD או ISO
+    const isoTest = /^\d{4}-\d{2}-\d{2}/;
+    if (isoTest.test(dateStr)) return new Date(dateStr);
+    // DD.MM.YYYY (אולי עם שעה)
+    const dmTest = /^(\d{2})\.(\d{2})\.(\d{4})(.*)?$/;
+    const match = dateStr.match(dmTest);
+    if (match) {
+      const day = match[1], month = match[2], year = match[3];
+      const time = match[4] ? match[4].trim() : "";
+      return new Date(`${year}-${month}-${day}${time ? "T"+time : ""}`);
+    }
+    // כל פורמט אחר
+    return new Date(dateStr);
+  }
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -38,7 +57,11 @@ export default function Dashboard() {
         const listRes = await axios.get("http://localhost:3000/api/list-recordings", {
           headers: { "Accept-Charset": "utf-8" },
         });
-        setDiscussions(listRes.data?.recordings || []);
+        setDiscussions(
+          (listRes.data?.recordings || []).sort(
+            (a, b) => parseDateFlexible(b.date) - parseDateFlexible(a.date)
+          )
+        );
       } catch (err) {
         console.error("❌ שגיאה בטעינת הדיונים:", err);
       }
@@ -62,6 +85,32 @@ export default function Dashboard() {
     }
   };
 
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case "ready":
+        return "מוכן";
+      case "processing":
+        return "בעיבוד";
+      case "error":
+        return "שגיאה";
+      default:
+        return status;
+    }
+  };
+
+  const getTypeLabel = (type) => {
+    switch (type) {
+      case "recorded":
+        return "🎙️ הקלטה";
+      case "uploaded":
+        return "🎵 העלאה";
+      case "dictated":
+        return "✍️ הכתבה";
+      default:
+        return "—";
+    }
+  };
+
   const cleanTitle = (raw) => {
     if (!raw) return "";
     const decoded = decodeSafe(raw);
@@ -70,10 +119,8 @@ export default function Dashboard() {
     return noId;
   };
 
-  // ✅ פתיחת קובץ לפי פורמט נבחר
   const handleFileOpen = (filename, format) => {
     if (!filename) return alert("שם קובץ חסר");
-
     const safeFilename = encodeURIComponent(filename);
 
     switch (format) {
@@ -89,8 +136,23 @@ export default function Dashboard() {
       default:
         alert("פורמט לא נתמך");
     }
-
     setFormatModal({ open: false, file: null });
+  };
+
+  // Toggle row expand/collapse
+  const toggleRow = (idx) => {
+    setExpandedRows((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+
+  // מחיקת דיון בודד (בדרופדאון)
+  const handleDeleteOne = async (idx) => {
+    if (!window.confirm("האם למחוק את הדיון?")) return;
+    const newArr = [...discussions];
+    newArr.splice(idx, 1);
+    setDiscussions(newArr);
+    // await axios.post('http://localhost:3000/api/delete-discussion', { id: discussions[idx].id });
   };
 
   return (
@@ -104,12 +166,7 @@ export default function Dashboard() {
         }}
       >
         <div className="absolute inset-0 opacity-25 pointer-events-none animate-waveMotion">
-          <svg
-            viewBox="0 0 1440 320"
-            xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="none"
-            className="w-full h-full"
-          >
+          <svg viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" className="w-full h-full">
             <path
               fill="url(#grad1)"
               fillOpacity="0.5"
@@ -124,14 +181,8 @@ export default function Dashboard() {
             </defs>
           </svg>
         </div>
-
         <div className="absolute inset-0 opacity-15 pointer-events-none animate-waveMotionSlow">
-          <svg
-            viewBox="0 0 1440 320"
-            xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="none"
-            className="w-full h-full"
-          >
+          <svg viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" className="w-full h-full">
             <path
               fill="url(#grad2)"
               fillOpacity="0.6"
@@ -146,7 +197,6 @@ export default function Dashboard() {
             </defs>
           </svg>
         </div>
-
         <style>
           {`
           @keyframes waveMotion {
@@ -154,18 +204,13 @@ export default function Dashboard() {
             50% { transform: translateX(-50px); }
             100% { transform: translateX(0); }
           }
-          .animate-waveMotion {
-            animation: waveMotion 10s ease-in-out infinite;
-          }
+          .animate-waveMotion { animation: waveMotion 10s ease-in-out infinite; }
           @keyframes waveMotionSlow {
             0% { transform: translateX(0); }
             50% { transform: translateX(30px); }
             100% { transform: translateX(0); }
           }
-          .animate-waveMotionSlow {
-            animation: waveMotionSlow 20s ease-in-out infinite;
-          }
-
+          .animate-waveMotionSlow { animation: waveMotionSlow 20s ease-in-out infinite; }
           @keyframes pulseBar {
             0% { height: 6px; }
             25% { height: 18px; }
@@ -173,16 +218,18 @@ export default function Dashboard() {
             75% { height: 20px; }
             100% { height: 8px; }
           }
-          .amplitude-bar {
-            animation: pulseBar 1.2s ease-in-out infinite;
-          }
+          .amplitude-bar { animation: pulseBar 1.2s ease-in-out infinite; }
           .amplitude-bar:nth-child(2) { animation-delay: 0.2s; }
           .amplitude-bar:nth-child(3) { animation-delay: 0.4s; }
           .amplitude-bar:nth-child(4) { animation-delay: 0.6s; }
           .amplitude-bar:nth-child(5) { animation-delay: 0.8s; }
+          .animate-slideDown { animation: slideDown 0.35s ease; }
+          @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px);}
+            to { opacity: 1; transform: translateY(0);}
+          }
           `}
         </style>
-
         <div className="relative z-10 flex flex-col items-start text-left">
           <div className="flex items-center gap-3">
             <div className="flex items-end justify-center gap-[2px] w-8 h-6">
@@ -206,8 +253,7 @@ export default function Dashboard() {
       <div ref={menuRef} className="absolute top-[150px] right-[40px]">
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="bg-gradient-to-l from-[#ff6f00] to-[#b347ff] text-white py-2 px-5 rounded-lg 
-                     font-bold shadow-lg hover:scale-105 transition"
+          className="bg-gradient-to-l from-[#ff6f00] to-[#b347ff] text-white py-2 px-5 rounded-lg font-bold shadow-lg hover:scale-105 transition"
         >
           ➕ הוספת דיון חדש
         </button>
@@ -218,7 +264,7 @@ export default function Dashboard() {
               🎙️ הקלט דיון
             </button>
             <button className="w-full px-4 py-2 hover:bg-gray-100" onClick={() => navigate("/recording")}>
-              📁 העלאת הקלטה קיימת
+              🎵 העלאת הקלטה קיימת
             </button>
             <button className="w-full px-4 py-2 hover:bg-gray-100" onClick={() => navigate("/supervised")}>
               ✍️ הכתבה
@@ -229,14 +275,13 @@ export default function Dashboard() {
 
       {/* רשימת הדיונים */}
       <main className="pt-44 px-8">
-        <div className="text-center text-2xl font-bold mb-8 text-gray-700">
-          רשימת תמלולים ודיונים
-        </div>
-
+        <div className="text-center text-2xl font-bold mb-8 text-gray-700">רשימת דיונים חכמים</div>
         <div className="w-[90%] mx-auto bg-[#f0f1f5] rounded-xl shadow-md border border-gray-200 overflow-hidden">
           <table className="w-full border-collapse text-center text-sm text-gray-700">
             <thead className="bg-[#ececf1] text-gray-700 font-semibold">
               <tr>
+                <th className="p-3 w-10"></th>
+                <th className="p-3">סוג</th>
                 <th className="p-3">נושא הדיון</th>
                 <th className="p-3">מוביל הדיון</th>
                 <th className="p-3">תאריך</th>
@@ -248,75 +293,163 @@ export default function Dashboard() {
             <tbody>
               {discussions.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-6 text-gray-500">
+                  <td colSpan="8" className="p-6 text-gray-500">
                     אין דיונים עדיין
                   </td>
                 </tr>
               ) : (
                 discussions.map((item, idx) => (
-                  <tr
-                    key={idx}
-                    className="border-b border-gray-200 hover:bg-[#f8f8fb] cursor-pointer transition"
-                    onClick={() =>
-                      item.filename && navigate(`/discussion/${encodeURIComponent(item.filename)}`)
-                    }
-                  >
-                    <td className="p-3 font-medium text-gray-800">
-                      {cleanTitle(item.title || item.filename || item.name)}
-                    </td>
-                    <td className="p-3 text-gray-700">{item.leader || "לא צוין"}</td>
-                    <td className="p-3">{item.date}</td>
-                    <td className="p-3">
-                      <span
-                        className={`text-white px-3 py-1 rounded-full text-xs font-bold ${getStatusClass(item.status)}`}
-                      >
-                        {item.status === "processing" && "בעיבוד"}
-                        {item.status === "ready" && "מוכן"}
-                        {item.status === "error" && "שגיאה"}
-                      </span>
-                    </td>
-
-                    <td
-                      className="p-3 text-gray-600 text-sm max-w-[300px] truncate hover:text-[#b347ff]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/discussion/${encodeURIComponent(item.filename)}`);
+                  <React.Fragment key={idx}>
+                    <tr
+                      className="border-b border-gray-200 hover:bg-[#f8f8fb] cursor-pointer transition"
+                      onClick={e => {
+                        // פותח/סוגר דרופדאון, אבל לא אם לוחצים על אייקון 👁️
+                        if (e.target && e.target.classList.contains("view-full-btn")) return;
+                        setExpandedRows((prev) =>
+                          prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+                        );
                       }}
                     >
-                      {item.transcriptPreview
-                        ? decodeSafe(item.transcriptPreview.slice(0, 100)) + "..."
-                        : "—"}
-                    </td>
-
-                    <td className="p-3 text-lg flex justify-center gap-4">
-                      {/* 🎧 נגן הקלטה */}
-                      <span
-                        title="נגן הקלטה"
-                        onClick={(e) => {
+                      {/* פלוס/מינוס */}
+                      <td
+                        className="p-3 w-10 align-middle"
+                        onClick={e => {
                           e.stopPropagation();
-                          const baseName = item.filename;
-                          if (!baseName) return alert("שם קובץ לא תקין 🎧");
-                          const url = `http://localhost:3001/play/${encodeURIComponent(baseName)}.wav`;
-                          window.open(url, "_blank");
+                          setExpandedRows((prev) =>
+                            prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+                          );
                         }}
-                        className="cursor-pointer hover:scale-110 transition"
                       >
-                        🎧
-                      </span>
-
-                      {/* 📄 פתח תמלול */}
-                      <span
-                        title="פתח תמלול"
-                        onClick={(e) => {
+                        <span
+                          className={`cursor-pointer transition text-2xl select-none ${expandedRows.includes(idx) ? "text-[#b347ff]" : "text-gray-500"}`}
+                          title={expandedRows.includes(idx) ? "סגור" : "הצג דיון"}
+                        >
+                          {expandedRows.includes(idx) ? "−" : "+"}
+                        </span>
+                      </td>
+                      <td className="p-3">{getTypeLabel(item.type)}</td>
+                      <td className="p-3 font-medium text-gray-800">
+                        {cleanTitle(item.title || item.filename || item.name)}
+                      </td>
+                      <td className="p-3 text-gray-700">{item.leader || "לא צוין"}</td>
+                      <td className="p-3">{item.date}</td>
+                      <td className="p-3">
+                        <span
+                          className={`text-white px-3 py-1 rounded-full text-xs font-bold ${getStatusClass(item.status)}`}
+                        >
+                          {getStatusLabel(item.status)}
+                        </span>
+                      </td>
+                      <td
+                        className="p-3 text-gray-600 text-sm max-w-[300px] truncate hover:text-[#b347ff] cursor-pointer"
+                        onClick={e => {
                           e.stopPropagation();
-                          setFormatModal({ open: true, file: item.filename });
+                          navigate(`/discussion/${encodeURIComponent(item.filename)}`);
                         }}
-                        className="cursor-pointer hover:scale-110 transition"
                       >
-                        📄
-                      </span>
-                    </td>
-                  </tr>
+                        {item.transcriptPreview
+                          ? decodeSafe(item.transcriptPreview.slice(0, 100)) + "..."
+                          : "—"}
+                      </td>
+                      <td className="p-3 text-lg flex justify-center gap-4">
+                        <span
+                          title="נגן הקלטה"
+                          onClick={e => {
+                            e.stopPropagation();
+                            const baseName = item.filename;
+                            if (!baseName) return alert("שם קובץ לא תקין 🎧");
+                            window.open(
+                              `http://localhost:3001/play/${encodeURIComponent(baseName)}.wav`,
+                              "_blank"
+                            );
+                          }}
+                          className="cursor-pointer hover:scale-110 transition"
+                        >
+                          🎧
+                        </span>
+                        <span
+                          title="פתח תמלול"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setFormatModal({ open: true, file: item.filename });
+                          }}
+                          className="cursor-pointer hover:scale-110 transition"
+                        >
+                          📄
+                        </span>
+                        <span
+                          title="מעבר לדף מלא"
+                          onClick={e => {
+                            e.stopPropagation();
+                            navigate(`/discussion/${encodeURIComponent(item.filename)}`);
+                          }}
+                          className="view-full-btn cursor-pointer hover:scale-125 transition"
+                          style={{ fontSize: "1.35em", marginRight: 8 }}
+                        >
+                          👁️
+                        </span>
+                      </td>
+                    </tr>
+                    {/* דרופדאון */}
+                    {expandedRows.includes(idx) && (
+                      <tr>
+                        <td colSpan={8} className="bg-[#f4ecfb] border-b-2 border-[#b347ff] p-4 text-right animate-slideDown">
+                          <div className="flex flex-col gap-2">
+                            <div className="font-bold text-[#b347ff] text-lg mb-2">תוכן הדיון:</div>
+                            <div className="text-gray-700 text-sm mb-2 whitespace-pre-line">
+                              <b>שם:</b> {cleanTitle(item.title || item.filename || item.name)}<br />
+                              <b>מוביל:</b> {item.leader || "לא צוין"}<br />
+                              <b>תאריך:</b> {item.date}<br />
+                              <b>סטטוס:</b> {getStatusLabel(item.status)}<br />
+                              <b>קבצים:</b>
+                              <div className="flex gap-4 items-center mt-2">
+                                {(item.files || []).map((f, i) => (
+                                  <a
+                                    key={i}
+                                    href={`http://localhost:3001/play/${encodeURIComponent(f)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#b347ff] hover:underline text-lg"
+                                  >
+                                    🎧 {f}
+                                  </a>
+                                ))}
+                                {(item.attachments || []).map((f, i) => (
+                                  <a
+                                    key={i}
+                                    href={`http://localhost:3000/transcripts/${encodeURIComponent(f)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#ff6f00] hover:underline text-lg"
+                                  >
+                                    📄 {f}
+                                  </a>
+                                ))}
+                              </div>
+                              <div style={{ marginTop: 8 }}>
+                                <b>תמלול מלא:</b><br />
+                                <span>{item.transcriptFull ? decodeSafe(item.transcriptFull) : "אין תוכן מלא"}</span>
+                              </div>
+                            </div>
+                            {/* כפתור מעבר לדף מלא */}
+                            <button
+                              onClick={() => navigate(`/discussion/${encodeURIComponent(item.filename)}`)}
+                              className="bg-[#b347ff] text-white font-bold py-2 px-4 rounded-lg w-fit mt-2 hover:bg-[#8a1abb]"
+                            >
+                              👁️ מעבר לדף המלא
+                            </button>
+                            {/* כפתור מחיקה */}
+                            <button
+                              onClick={() => handleDeleteOne(idx)}
+                              className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg w-fit mt-2 hover:bg-red-700"
+                            >
+                              מחק דיון זה
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>
@@ -324,7 +457,7 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* 💠 Modal לבחירת פורמט */}
+      {/* 💠 Modal */}
       {formatModal.open && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-[300px] text-center">

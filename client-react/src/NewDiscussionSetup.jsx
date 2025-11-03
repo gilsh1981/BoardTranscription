@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function NewDiscussionSetup() {
-  const [discussionType, setDiscussionType] = useState("");
   const [topic, setTopic] = useState("");
   const [purpose, setPurpose] = useState("");
   const [language, setLanguage] = useState("עברית");
@@ -10,18 +9,22 @@ export default function NewDiscussionSetup() {
   const [leaderEmail, setLeaderEmail] = useState("");
 
   const navigate = useNavigate();
-  const discussionTypes = ["ישיבה", "ועדה", "שיחת רבעון", "פרוטוקול", "אחר"];
 
   // ✅ שמירת הנתונים מקומית והמשך לעמוד הבא
   const handleContinue = () => {
     const discussionData = {
-      discussionType,
+      type: "recorded", // ✅ מוגדר אוטומטית - מדובר בדיון מוקלט
       topic,
       purpose,
       language,
       leaderName,
       leaderEmail,
     };
+
+    if (!topic.trim()) {
+      alert("אנא הזן נושא דיון לפני ההמשך");
+      return;
+    }
 
     // 🧠 שמירה ב-sessionStorage כדי שעמוד ההקלטה יקבל את הנתונים
     sessionStorage.setItem("discussionData", JSON.stringify(discussionData));
@@ -77,19 +80,7 @@ export default function NewDiscussionSetup() {
         <div className="bg-white rounded-2xl shadow p-8 border border-gray-200 order-1 md:order-1">
           <h2 className="text-xl font-bold mb-6 text-gray-700">פרטי הדיון</h2>
 
-          <label className="block mb-3 text-gray-600">סוג הדיון</label>
-          <select
-            value={discussionType}
-            onChange={(e) => setDiscussionType(e.target.value)}
-            className="w-full mb-5 border rounded-lg p-3 focus:ring-2 focus:ring-pink-400 focus:outline-none"
-          >
-            <option value="">בחר סוג דיון</option>
-            {discussionTypes.map((type) => (
-              <option key={type}>{type}</option>
-            ))}
-          </select>
-
-          <label className="block mb-3 text-gray-600">נושא הדיון</label>
+          <label className="block mb-3 text-gray-600 font-semibold">נושא הדיון</label>
           <input
             type="text"
             value={topic}
@@ -98,7 +89,7 @@ export default function NewDiscussionSetup() {
             className="w-full mb-5 border rounded-lg p-3 focus:ring-2 focus:ring-pink-400 focus:outline-none"
           />
 
-          <label className="block mb-3 text-gray-600">מטרת הדיון</label>
+          <label className="block mb-3 text-gray-600 font-semibold">מטרת הדיון</label>
           <textarea
             rows="3"
             value={purpose}
@@ -107,7 +98,7 @@ export default function NewDiscussionSetup() {
             className="w-full mb-5 border rounded-lg p-3 focus:ring-2 focus:ring-pink-400 focus:outline-none"
           />
 
-          <label className="block mb-3 text-gray-600">שפת הדיון</label>
+          <label className="block mb-3 text-gray-600 font-semibold">שפת הדיון</label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
@@ -117,7 +108,7 @@ export default function NewDiscussionSetup() {
             <option>אנגלית</option>
           </select>
 
-          <label className="block mb-3 text-gray-600">מוביל הדיון</label>
+          <label className="block mb-3 text-gray-600 font-semibold">מוביל הדיון</label>
           <input
             type="text"
             value={leaderName}

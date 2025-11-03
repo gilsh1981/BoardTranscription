@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { FileDown, FileText, FileAudio, FileType } from "lucide-react";
 
 export default function DiscussionView() {
   const { filename } = useParams();
@@ -14,21 +15,15 @@ export default function DiscussionView() {
   useEffect(() => {
     async function fetchDiscussion() {
       try {
-        // מנקים ומפענחים את שם הקובץ
         const cleanFilename = decodeURIComponent(filename);
-
-        // ✅ בקשת פרטי ההקלטה — בלי להוסיף .wav
         const detRes = await axios.get(
           `http://localhost:3000/api/discussion-details/${encodeURIComponent(cleanFilename)}`
         );
-
         const data = detRes.data;
         setDiscussion(data);
 
-        // ✅ נתיב הקובץ האמיתי לשמע
         setAudioURL(`http://localhost:3000/uploads/${encodeURIComponent(cleanFilename)}.wav`);
 
-        // ✅ בקשת תמלול — גם בלי להוסיף .wav
         try {
           const txtRes = await axios.get(
             `http://localhost:3000/api/transcript/${encodeURIComponent(cleanFilename)}`
@@ -43,11 +38,9 @@ export default function DiscussionView() {
         setStatus("error");
       }
     }
-
     fetchDiscussion();
   }, [filename]);
 
-  // טקסט לפי סטטוס
   const getStatusText = () => {
     switch (status) {
       case "ready":
@@ -61,15 +54,32 @@ export default function DiscussionView() {
     }
   };
 
+  // אייקונים עם טאץ' מודרני
+  const getFileIcon = (name) => {
+    const lower = name.toLowerCase();
+    if (lower.endsWith(".pdf")) return <FileDown className="text-red-500 w-5 h-5 drop-shadow-md" />;
+    if (lower.endsWith(".docx")) return <FileText className="text-blue-500 w-5 h-5 drop-shadow-md" />;
+    if (lower.endsWith(".wav") || lower.endsWith(".mp3"))
+      return <FileAudio className="text-purple-500 w-5 h-5 drop-shadow-md" />;
+    return <FileType className="text-gray-400 w-5 h-5" />;
+  };
+
+  const getDownloadUrl = (name) => {
+    const base = encodeURIComponent(filename);
+    if (name.endsWith(".pdf")) return `http://localhost:3000/api/download-pdf/${base}`;
+    if (name.endsWith(".docx")) return `http://localhost:3000/api/download-docx/${base}`;
+    return `http://localhost:3000/transcripts/${encodeURIComponent(name)}`;
+  };
+
   return (
     <div dir="rtl" className="min-h-screen bg-white font-[Heebo] p-10">
       {/* Header */}
       <div className="flex items-center justify-between mb-10">
-        <h1 className="text-3xl font-bold text-[#b347ff]">
+        <h1 className="text-3xl font-bold text-[#b347ff] drop-shadow-sm">
           פרטי דיון:{" "}
-          {filename
-            ? decodeURIComponent(filename).replace(/\.webm|\.wav/gi, "")
-            : "לא צוין"}
+          {discussion?.title
+            ? discussion.title
+            : decodeURIComponent(filename).replace(/\.webm|\.wav/gi, "")}
         </h1>
 
         <button
@@ -108,6 +118,31 @@ export default function DiscussionView() {
             <p>
               <strong>משתתפים:</strong> {discussion.participants || "לא צוין"}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Related Files */}
+      {discussion && discussion.relatedFiles && discussion.relatedFiles.length > 0 && (
+        <div className="bg-gray-50 border rounded-lg shadow p-6 mb-8">
+          <h2 className="text-lg font-semibold mb-4 text-gray-700">📂 קבצים קשורים</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {discussion.relatedFiles
+              .filter((file) => !file.name.endsWith(".txt"))
+              .map((file, index) => (
+                <a
+                  key={index}
+                  href={getDownloadUrl(file.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-pink-400 transition-all group"
+                >
+                  {getFileIcon(file.name)}
+                  <span className="text-gray-700 text-sm group-hover:text-pink-500 transition">
+                    {file.name}
+                  </span>
+                </a>
+              ))}
           </div>
         </div>
       )}

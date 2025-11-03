@@ -7,3 +7,14 @@ body {
   background-color: #ffffff;
 }
 
+.ai-glow {
+  filter: drop-shadow(0 0 4px rgba(219, 39, 119, 0.4))
+          drop-shadow(0 0 8px rgba(147, 51, 234, 0.3));
+  transition: transform 0.2s ease, filter 0.3s ease;
+}
+
+.ai-glow:hover {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 8px rgba(219, 39, 119, 0.6))
+          drop-shadow(0 0 16px rgba(147, 51, 234, 0.4));
+}
