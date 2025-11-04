@@ -1,87 +1,123 @@
+#!/usr/bin/env python3
 import asyncio
 import websockets
-import tempfile
 import whisper
 import os
 import json
-import subprocess
 import sys
+import tempfile
+import subprocess
+import shutil
 
-# תמיכה בעברית ו־Unicode לקונסול של Windows
+import sys
+print("RUNNING:", sys.argv[0])
+print("__file__:", __file__)
+import inspect
+print("inspect file:", inspect.getfile(inspect.currentframe()))
+
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8")
 
-# ---- הגדרות ----
-WHISPER_MODEL = "small"   # אפשר medium/large, תתחיל מ-small
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# נתיב מלא ל-ffmpeg
-FFMPEG_BIN = r"C:\Users\gilsh\Downloads\Tools\ffmpeg-8.0-essentials_build\ffmpeg-8.0-essentials_build\bin\ffmpeg.exe"
+print("DEBUG: BASE_DIR =", BASE_DIR)
+print("DEBUG: UPLOAD_DIR =", UPLOAD_DIR)
+print("DEBUG: תוכן BASE_DIR =", os.listdir(BASE_DIR))
+print("DEBUG: קיים uploads?", os.path.exists(UPLOAD_DIR))
 
-# ---- טען את המודל פעם אחת ----
-print(">> טוען את המודל Whisper... (אם זה הפעם הראשונה זה ייקח כמה דקות, במיוחד ל-medium/large)")
-model = whisper.load_model(WHISPER_MODEL)
+FFMPEG_PATH = shutil.which("ffmpeg") or r"C:\Users\gilsh\Downloads\Tools\ffmpeg-8.0-essentials_build\ffmpeg-8.0-essentials_build\bin\ffmpeg.exe"
+print("DEBUG: FFMPEG_PATH =", FFMPEG_PATH)
+
+print(">> טוען את מודל Whisper... (זה עלול לקחת כמה דקות בפעם הראשונה)")
+model = whisper.load_model("small")
 print("🚀 Whisper Hebrew WS Server מוכן!")
+print(f">> מאזין על ws://0.0.0.0:2700 ...")
 
-async def recognize_stream(websocket):
-    print(">> לקוח התחבר")
+async def recognize(websocket):
     try:
         async for message in websocket:
             if isinstance(message, bytes):
-                print(f">> קיבלתי chunk בגודל {len(message)} בייט")
-                # כתוב chunk לקובץ זמני
-                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
-                    f.write(message)
-                    webm_path = f.name
-                wav_path = webm_path.replace(".webm", ".wav")
-                print(f">> המיר מ-webm ל-wav: {webm_path} --> {wav_path}")
-
-                # המר מ־webm ל־wav ע"י ffmpeg
-                cmd = [
-                    FFMPEG_BIN, "-y", "-i", webm_path,
-                    "-ar", "16000", "-ac", "1", wav_path
-                ]
+                tmp_webm = None
+                tmp_wav = None
                 try:
-                    result_ffmpeg = subprocess.run(cmd, capture_output=True, check=True)
-                    print(">> ffmpeg סיים בהצלחה")
-                except Exception as e:
-                    print("❌ ffmpeg נכשל:", e)
-                    await websocket.send(json.dumps({"error": "ffmpeg failed"}))
-                    os.remove(webm_path)
-                    continue
+                    # שמירה לקובץ זמני .webm
+                    with tempfile.NamedTemporaryFile(suffix=".webm", dir=UPLOAD_DIR, delete=False) as f:
+                        f.write(message)
+                        tmp_webm = f.name
+                    print(f"\n💾 נשמר קובץ WEBM: {tmp_webm}")
 
-                # רוץ על whisper (עברית)
-                try:
-                    print(">> רץ transcribe עם whisper...")
-                    result = model.transcribe(wav_path, language="he")
-                    text = result.get("text", "").strip()
-                    print(f">> תוצאה: {text}")
+                    # הגדרת שם קובץ WAV - בטוח!
+                    base_name = os.path.splitext(os.path.basename(tmp_webm))[0]
+                    tmp_wav = os.path.join(UPLOAD_DIR, base_name + ".wav")
+
+                    # DEBUG: Print כל נתיב
+                    print(f"DEBUG: base_name = {base_name}")
+                    print(f"DEBUG: tmp_webm = {tmp_webm}")
+                    print(f"DEBUG: tmp_wav = {tmp_wav}")
+                    print(f"DEBUG: האם קיים uploads? {os.path.exists(UPLOAD_DIR)}")
+                    print(f"DEBUG: כל הקבצים ב-uploads: {os.listdir(UPLOAD_DIR)}")
+
+                    # בדוק האם ffmpeg קיים
+                    if not os.path.exists(FFMPEG_PATH):
+                        raise FileNotFoundError(f"ffmpeg לא נמצא בנתיב: {FFMPEG_PATH}")
+
+                    # המרה ל־.wav עם ffmpeg
+                    ffmpeg_cmd = [
+                        FFMPEG_PATH,
+                        "-y",
+                        "-i", tmp_webm,
+                        "-ar", "16000",
+                        "-ac", "1",
+                        tmp_wav
+                    ]
+                    # הדפסה של כל אלמנט, כולל אינדקס!
+                    for i, arg in enumerate(ffmpeg_cmd):
+                        print(f"ffmpeg_cmd[{i}]: {arg}")
+                    print(f"🛠️ מריץ: {' '.join(ffmpeg_cmd)}")
+                    result = subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    print(f"🎧 הומר בהצלחה ל-WAV: {tmp_wav}")
+
+                    # בדוק שהקובץ WAV נוצר
+                    if not os.path.exists(tmp_wav):
+                        raise FileNotFoundError(f"WAV לא נוצר: {tmp_wav}")
+                    print(f"DEBUG: WAV קיים? {os.path.exists(tmp_wav)}")
+
+                    # תמלול עם Whisper
+                    whisper_result = model.transcribe(tmp_wav, language="he", fp16=False)
+                    text = whisper_result.get("text", "").strip()
+
                     if text:
-                        await websocket.send(json.dumps({"text": text}))
+                        print(f"📝 תמלול: {text}")
+                        await websocket.send(json.dumps({"partial": text}))
+                    else:
+                        print("⚠️ לא זוהה טקסט")
+                except subprocess.CalledProcessError as e:
+                    print("❌ שגיאת המרה (ffmpeg):", e)
+                    print(e.stderr.decode("utf-8", errors="ignore"))
                 except Exception as e:
-                    print("❌ Whisper נכשל:", e)
-                    await websocket.send(json.dumps({"error": "whisper failed"}))
+                    print("❌ שגיאת תמלול:", e)
                 finally:
-                    # תמיד תנקות קבצים
-                    print(">> מנקה קבצים זמניים...")
-                    os.remove(webm_path)
-                    if os.path.exists(wav_path):
-                        os.remove(wav_path)
+                    # מחיקה
+                    for f in [tmp_webm, tmp_wav]:
+                        if f and os.path.exists(f):
+                            os.remove(f)
+
             else:
                 msg = message.strip().lower()
-                print(f">> קיבל טקסט: {msg}")
-                if msg in ("end", "close", "reset"):
-                    await websocket.send(json.dumps({"status": "closed"}))
+                print(f"📨 קיבל טקסט: {msg}")
+                if msg == "end":
+                    await websocket.send(json.dumps({"status": "done"}))
                     break
     except Exception as e:
-        print("Connection error:", e)
+        print("⚠️ שגיאת חיבור:", e)
     finally:
         print(">> לקוח התנתק")
-        await websocket.close()
 
 async def main():
-    print(">> מאזין על ws://0.0.0.0:2700 ...")
-    async with websockets.serve(recognize_stream, "0.0.0.0", 2700, max_size=10 * 1024 * 1024):
-        await asyncio.Future()  # Keep running
+    async with websockets.serve(recognize, "0.0.0.0", 2700, max_size=50 * 1024 * 1024):
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())
