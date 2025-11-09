@@ -1,12 +1,63 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import NeonAmplitudeIcon from "./components/NeonAmplitudeIcon";
+
+// ⭐️ כוכביות מונפשות AI
+function AiStarsAnimated() {
+  return (
+    <span className="relative w-9 h-7 ml-1 flex items-center">
+      <svg viewBox="0 0 34 28" className="w-8 h-7 animate-spin-slow">
+        <g>
+          <circle cx="28" cy="7" r="2" fill="url(#g1)">
+            <animate attributeName="opacity" values="0.8;1;0.8" dur="1.6s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="12" cy="24" r="1.1" fill="url(#g2)">
+            <animate attributeName="opacity" values="1;0.7;1" dur="2.1s" repeatCount="indefinite"/>
+          </circle>
+          <path d="M17 3L18.6 8H23.9L19.65 11.1L21.2 16L17 12.75L12.8 16L14.35 11.1L10.1 8H15.4L17 3Z"
+            fill="url(#g3)">
+            <animateTransform attributeName="transform" attributeType="XML"
+              type="scale" values="1;1.12;1" dur="2.3s" repeatCount="indefinite"/>
+          </path>
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#59D8FF" />
+              <stop offset="1" stopColor="#9052FF" />
+            </linearGradient>
+            <linearGradient id="g2" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#FF6FDB" />
+              <stop offset="1" stopColor="#59D8FF" />
+            </linearGradient>
+            <linearGradient id="g3" x1="8" y1="4" x2="20" y2="18" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#FF6FDB" />
+              <stop offset="0.5" stopColor="#9052FF" />
+              <stop offset="1" stopColor="#59D8FF" />
+            </linearGradient>
+          </defs>
+        </g>
+      </svg>
+      <style>{`
+        @keyframes spin-slow {
+          0% { transform: rotate(-6deg);}
+          30% { transform: rotate(12deg);}
+          60% { transform: rotate(-5deg);}
+          100% { transform: rotate(-6deg);}
+        }
+        .animate-spin-slow {
+          animation: spin-slow 3.5s cubic-bezier(.57,.17,.67,.95) infinite;
+        }
+      `}</style>
+    </span>
+  );
+}
 
 export default function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [formatModal, setFormatModal] = useState({ open: false, file: null });
   const [discussions, setDiscussions] = useState([]);
   const [expandedRows, setExpandedRows] = useState([]);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
@@ -22,24 +73,6 @@ export default function Dashboard() {
       }
     }
   };
-
-  // פונקציה שמטפלת בכל פורמט תאריך
-  function parseDateFlexible(dateStr) {
-    if (!dateStr) return new Date(0);
-    // YYYY-MM-DD או ISO
-    const isoTest = /^\d{4}-\d{2}-\d{2}/;
-    if (isoTest.test(dateStr)) return new Date(dateStr);
-    // DD.MM.YYYY (אולי עם שעה)
-    const dmTest = /^(\d{2})\.(\d{2})\.(\d{4})(.*)?$/;
-    const match = dateStr.match(dmTest);
-    if (match) {
-      const day = match[1], month = match[2], year = match[3];
-      const time = match[4] ? match[4].trim() : "";
-      return new Date(`${year}-${month}-${day}${time ? "T"+time : ""}`);
-    }
-    // כל פורמט אחר
-    return new Date(dateStr);
-  }
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -57,11 +90,7 @@ export default function Dashboard() {
         const listRes = await axios.get("http://localhost:3000/api/list-recordings", {
           headers: { "Accept-Charset": "utf-8" },
         });
-        setDiscussions(
-          (listRes.data?.recordings || []).sort(
-            (a, b) => parseDateFlexible(b.date) - parseDateFlexible(a.date)
-          )
-        );
+        setDiscussions(listRes.data?.recordings || []);
       } catch (err) {
         console.error("❌ שגיאה בטעינת הדיונים:", err);
       }
@@ -82,19 +111,6 @@ export default function Dashboard() {
         return "bg-red-500";
       default:
         return "bg-gray-400";
-    }
-  };
-
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case "ready":
-        return "מוכן";
-      case "processing":
-        return "בעיבוד";
-      case "error":
-        return "שגיאה";
-      default:
-        return status;
     }
   };
 
@@ -119,6 +135,15 @@ export default function Dashboard() {
     return noId;
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      setDiscussions([]);
+      setShowDeleteAll(false);
+    } catch (e) {
+      alert("שגיאה במחיקת דיונים");
+    }
+  };
+
   const handleFileOpen = (filename, format) => {
     if (!filename) return alert("שם קובץ חסר");
     const safeFilename = encodeURIComponent(filename);
@@ -139,20 +164,17 @@ export default function Dashboard() {
     setFormatModal({ open: false, file: null });
   };
 
-  // Toggle row expand/collapse
   const toggleRow = (idx) => {
     setExpandedRows((prev) =>
       prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
     );
   };
 
-  // מחיקת דיון בודד (בדרופדאון)
   const handleDeleteOne = async (idx) => {
     if (!window.confirm("האם למחוק את הדיון?")) return;
     const newArr = [...discussions];
     newArr.splice(idx, 1);
     setDiscussions(newArr);
-    // await axios.post('http://localhost:3000/api/delete-discussion', { id: discussions[idx].id });
   };
 
   return (
@@ -162,41 +184,46 @@ export default function Dashboard() {
         dir="ltr"
         className="relative overflow-hidden text-white py-6 px-10 flex items-center shadow-lg"
         style={{
-          background: "linear-gradient(135deg, #13002a 0%, #3b007a 45%, #ff6f00 100%)",
+          background:
+            "linear-gradient(135deg, #06060a 0%, #0b0a18 40%, #151036 70%, #1f1450 100%)",
         }}
       >
-        <div className="absolute inset-0 opacity-25 pointer-events-none animate-waveMotion">
+        <div className="absolute inset-0 bg-black/25 pointer-events-none" />
+
+        <div className="absolute inset-0 opacity-20 pointer-events-none animate-waveMotion">
           <svg viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" className="w-full h-full">
             <path
               fill="url(#grad1)"
               fillOpacity="0.5"
               d="M0,96L48,112C96,128,192,160,288,154.7C384,149,480,107,576,96C672,85,768,107,864,112C960,117,1056,107,1152,128C1248,149,1344,203,1392,229.3L1440,256L1440,0L0,0Z"
-            ></path>
+            />
             <defs>
               <linearGradient id="grad1" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#ff6f00" />
-                <stop offset="50%" stopColor="#b347ff" />
-                <stop offset="100%" stopColor="#ffffff" />
+                <stop offset="0%" stopColor="#2b1a5a" />
+                <stop offset="50%" stopColor="#4c2493" />
+                <stop offset="100%" stopColor="#6a3cb8" />
               </linearGradient>
             </defs>
           </svg>
         </div>
-        <div className="absolute inset-0 opacity-15 pointer-events-none animate-waveMotionSlow">
+
+        <div className="absolute inset-0 opacity-12 pointer-events-none animate-waveMotionSlow">
           <svg viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" className="w-full h-full">
             <path
               fill="url(#grad2)"
               fillOpacity="0.6"
               d="M0,160L60,165.3C120,171,240,181,360,181.3C480,181,600,171,720,149.3C840,128,960,96,1080,80C1200,64,1320,64,1380,64L1440,64L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"
-            ></path>
+            />
             <defs>
               <linearGradient id="grad2" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#ffb84d" />
-                <stop offset="50%" stopColor="#b347ff" />
-                <stop offset="100%" stopColor="#ffffff" />
+                <stop offset="0%" stopColor="#1d123e" />
+                <stop offset="50%" stopColor="#3a1b78" />
+                <stop offset="100%" stopColor="#5b2aa1" />
               </linearGradient>
             </defs>
           </svg>
         </div>
+
         <style>
           {`
           @keyframes waveMotion {
@@ -211,18 +238,6 @@ export default function Dashboard() {
             100% { transform: translateX(0); }
           }
           .animate-waveMotionSlow { animation: waveMotionSlow 20s ease-in-out infinite; }
-          @keyframes pulseBar {
-            0% { height: 6px; }
-            25% { height: 18px; }
-            50% { height: 10px; }
-            75% { height: 20px; }
-            100% { height: 8px; }
-          }
-          .amplitude-bar { animation: pulseBar 1.2s ease-in-out infinite; }
-          .amplitude-bar:nth-child(2) { animation-delay: 0.2s; }
-          .amplitude-bar:nth-child(3) { animation-delay: 0.4s; }
-          .amplitude-bar:nth-child(4) { animation-delay: 0.6s; }
-          .amplitude-bar:nth-child(5) { animation-delay: 0.8s; }
           .animate-slideDown { animation: slideDown 0.35s ease; }
           @keyframes slideDown {
             from { opacity: 0; transform: translateY(-10px);}
@@ -230,30 +245,27 @@ export default function Dashboard() {
           }
           `}
         </style>
+
         <div className="relative z-10 flex flex-col items-start text-left">
           <div className="flex items-center gap-3">
-            <div className="flex items-end justify-center gap-[2px] w-8 h-6">
-              <div className="w-[3px] bg-[#ffb84d] rounded amplitude-bar"></div>
-              <div className="w-[3px] bg-[#ff6f00] rounded amplitude-bar"></div>
-              <div className="w-[3px] bg-[#b347ff] rounded amplitude-bar"></div>
-              <div className="w-[3px] bg-[#ff6f00] rounded amplitude-bar"></div>
-              <div className="w-[3px] bg-[#ffb84d] rounded amplitude-bar"></div>
+            <div className="w-[72px] h-[36px]">
+              <NeonAmplitudeIcon width={72} height={36} />
             </div>
             <span className="text-3xl font-extrabold tracking-wide drop-shadow-[0_0_12px_rgba(255,255,255,0.6)]">
               BoardTranscriber
             </span>
           </div>
-          <span className="text-[#ffeedd] text-sm mt-2 font-semibold tracking-wide">
+          <span className="text-[#e6e1f5] text-sm mt-2 font-semibold tracking-wide">
             AI Smart Board Meetings
           </span>
         </div>
       </header>
 
-      {/* כפתור הוספת דיון חדש */}
-      <div ref={menuRef} className="absolute top-[150px] right-[40px]">
+      {/* כפתור הוספת דיון חדש - top מונמך */}
+      <div ref={menuRef} className="absolute top-[150px] left-auto right-[55px] z-20">
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="bg-gradient-to-l from-[#ff6f00] to-[#b347ff] text-white py-2 px-5 rounded-lg font-bold shadow-lg hover:scale-105 transition"
+          className="bg-gradient-to-l from-[#5b2aa1] to-[#8a3ffc] text-white py-2 px-5 rounded-lg font-bold shadow-lg hover:scale-105 transition"
         >
           ➕ הוספת דיון חדש
         </button>
@@ -273,13 +285,30 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* כותרת חכמה במרכז + כוכביות מונפשות */}
+      <div className="flex flex-col items-center mt-10 mb-6">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-700 font-extrabold text-xl tracking-tight flex items-center gap-1">
+            רשימת דיונים חכמים
+            <AiStarsAnimated />
+          </span>
+        </div>
+      </div>
+
       {/* רשימת הדיונים */}
-      <main className="pt-44 px-8">
-        <div className="text-center text-2xl font-bold mb-8 text-gray-700">רשימת דיונים חכמים</div>
-        <div className="w-[90%] mx-auto bg-[#f0f1f5] rounded-xl shadow-md border border-gray-200 overflow-hidden">
+      <main>
+        <div className="w-[90%] mx-auto mt-10 bg-[#f0f1f5] rounded-xl shadow-md border border-gray-200 overflow-hidden transition-all duration-200">
           <table className="w-full border-collapse text-center text-sm text-gray-700">
             <thead className="bg-[#ececf1] text-gray-700 font-semibold">
               <tr>
+                <th className="p-3 w-12 align-middle">
+                  <input
+                    type="checkbox"
+                    onChange={() => setShowDeleteAll(true)}
+                    className="w-5 h-5 accent-[#8a3ffc] cursor-pointer"
+                    title="סמן למחיקת כל הדיונים"
+                  />
+                </th>
                 <th className="p-3 w-10"></th>
                 <th className="p-3">סוג</th>
                 <th className="p-3">נושא הדיון</th>
@@ -293,35 +322,29 @@ export default function Dashboard() {
             <tbody>
               {discussions.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="p-6 text-gray-500">
-                    אין דיונים עדיין
-                  </td>
+                  <td colSpan="9" className="p-6 text-gray-500">אין דיונים עדיין</td>
                 </tr>
               ) : (
                 discussions.map((item, idx) => (
                   <React.Fragment key={idx}>
                     <tr
                       className="border-b border-gray-200 hover:bg-[#f8f8fb] cursor-pointer transition"
-                      onClick={e => {
-                        // פותח/סוגר דרופדאון, אבל לא אם לוחצים על אייקון 👁️
-                        if (e.target && e.target.classList.contains("view-full-btn")) return;
+                      onClick={() => {
                         setExpandedRows((prev) =>
                           prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
                         );
                       }}
                     >
-                      {/* פלוס/מינוס */}
+                      <td className="p-3 w-12"></td>
                       <td
                         className="p-3 w-10 align-middle"
-                        onClick={e => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedRows((prev) =>
-                            prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
-                          );
+                          toggleRow(idx);
                         }}
                       >
                         <span
-                          className={`cursor-pointer transition text-2xl select-none ${expandedRows.includes(idx) ? "text-[#b347ff]" : "text-gray-500"}`}
+                          className={`cursor-pointer transition text-2xl select-none ${expandedRows.includes(idx) ? "text-[#8a3ffc]" : "text-gray-500"}`}
                           title={expandedRows.includes(idx) ? "סגור" : "הצג דיון"}
                         >
                           {expandedRows.includes(idx) ? "−" : "+"}
@@ -334,27 +357,25 @@ export default function Dashboard() {
                       <td className="p-3 text-gray-700">{item.leader || "לא צוין"}</td>
                       <td className="p-3">{item.date}</td>
                       <td className="p-3">
-                        <span
-                          className={`text-white px-3 py-1 rounded-full text-xs font-bold ${getStatusClass(item.status)}`}
-                        >
-                          {getStatusLabel(item.status)}
+                        <span className={`text-white px-3 py-1 rounded-full text-xs font-bold ${getStatusClass(item.status)}`}>
+                          {item.status === "processing" && "בעיבוד"}
+                          {item.status === "ready" && "מוכן"}
+                          {item.status === "error" && "שגיאה"}
                         </span>
                       </td>
                       <td
-                        className="p-3 text-gray-600 text-sm max-w-[300px] truncate hover:text-[#b347ff] cursor-pointer"
-                        onClick={e => {
+                        className="p-3 text-gray-600 text-sm max-w-[300px] truncate hover:text-[#8a3ffc]"
+                        onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/discussion/${encodeURIComponent(item.filename)}`);
                         }}
                       >
-                        {item.transcriptPreview
-                          ? decodeSafe(item.transcriptPreview.slice(0, 100)) + "..."
-                          : "—"}
+                        {item.transcriptPreview ? decodeSafe(item.transcriptPreview.slice(0, 100)) + "..." : "—"}
                       </td>
                       <td className="p-3 text-lg flex justify-center gap-4">
                         <span
                           title="נגן הקלטה"
-                          onClick={e => {
+                          onClick={(e) => {
                             e.stopPropagation();
                             const baseName = item.filename;
                             if (!baseName) return alert("שם קובץ לא תקין 🎧");
@@ -369,7 +390,7 @@ export default function Dashboard() {
                         </span>
                         <span
                           title="פתח תמלול"
-                          onClick={e => {
+                          onClick={(e) => {
                             e.stopPropagation();
                             setFormatModal({ open: true, file: item.filename });
                           }}
@@ -377,30 +398,19 @@ export default function Dashboard() {
                         >
                           📄
                         </span>
-                        <span
-                          title="מעבר לדף מלא"
-                          onClick={e => {
-                            e.stopPropagation();
-                            navigate(`/discussion/${encodeURIComponent(item.filename)}`);
-                          }}
-                          className="view-full-btn cursor-pointer hover:scale-125 transition"
-                          style={{ fontSize: "1.35em", marginRight: 8 }}
-                        >
-                          👁️
-                        </span>
                       </td>
                     </tr>
-                    {/* דרופדאון */}
+
                     {expandedRows.includes(idx) && (
                       <tr>
-                        <td colSpan={8} className="bg-[#f4ecfb] border-b-2 border-[#b347ff] p-4 text-right animate-slideDown">
+                        <td colSpan={9} className="bg-[#f4ecfb] border-b-2 border-[#8a3ffc] p-4 text-right animate-slideDown">
                           <div className="flex flex-col gap-2">
-                            <div className="font-bold text-[#b347ff] text-lg mb-2">תוכן הדיון:</div>
+                            <div className="font-bold text-[#8a3ffc] text-lg mb-2">תוכן הדיון:</div>
                             <div className="text-gray-700 text-sm mb-2 whitespace-pre-line">
                               <b>שם:</b> {cleanTitle(item.title || item.filename || item.name)}<br />
                               <b>מוביל:</b> {item.leader || "לא צוין"}<br />
                               <b>תאריך:</b> {item.date}<br />
-                              <b>סטטוס:</b> {getStatusLabel(item.status)}<br />
+                              <b>סטטוס:</b> {item.status}<br />
                               <b>קבצים:</b>
                               <div className="flex gap-4 items-center mt-2">
                                 {(item.files || []).map((f, i) => (
@@ -409,7 +419,7 @@ export default function Dashboard() {
                                     href={`http://localhost:3001/play/${encodeURIComponent(f)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[#b347ff] hover:underline text-lg"
+                                    className="text-[#8a3ffc] hover:underline text-lg"
                                   >
                                     🎧 {f}
                                   </a>
@@ -420,28 +430,20 @@ export default function Dashboard() {
                                     href={`http://localhost:3000/transcripts/${encodeURIComponent(f)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[#ff6f00] hover:underline text-lg"
+                                    className="text-[#5b2aa1] hover:underline text-lg"
                                   >
                                     📄 {f}
                                   </a>
                                 ))}
                               </div>
-                              <div style={{ marginTop: 8 }}>
-                                <b>תמלול מלא:</b><br />
-                                <span>{item.transcriptFull ? decodeSafe(item.transcriptFull) : "אין תוכן מלא"}</span>
+                              <div style={{ marginTop: "1em" }}>
+                                <b>תמלול מלא:</b>
+                                <div>{item.transcriptFull ? decodeSafe(item.transcriptFull) : "אין תוכן מלא"}</div>
                               </div>
                             </div>
-                            {/* כפתור מעבר לדף מלא */}
-                            <button
-                              onClick={() => navigate(`/discussion/${encodeURIComponent(item.filename)}`)}
-                              className="bg-[#b347ff] text-white font-bold py-2 px-4 rounded-lg w-fit mt-2 hover:bg-[#8a1abb]"
-                            >
-                              👁️ מעבר לדף המלא
-                            </button>
-                            {/* כפתור מחיקה */}
                             <button
                               onClick={() => handleDeleteOne(idx)}
-                              className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg w-fit mt-2 hover:bg-red-700"
+                              className="bg-red-500 text-white font-bold py-2 px-4 rounded-lg w-fit mt-4 hover:bg-red-700"
                             >
                               מחק דיון זה
                             </button>
@@ -457,7 +459,30 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* 💠 Modal */}
+      {showDeleteAll && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl text-center">
+            <div className="text-xl font-bold mb-4 text-[#8a3ffc]">
+              האם אתה בטוח שברצונך למחוק את כל הדיונים מהטבלה?
+            </div>
+            <div className="flex gap-6 justify-center mt-4">
+              <button
+                className="bg-red-500 text-white py-2 px-8 rounded-lg font-bold hover:bg-red-700"
+                onClick={handleDeleteAll}
+              >
+                כן, מחק הכל
+              </button>
+              <button
+                className="bg-gray-200 py-2 px-8 rounded-lg font-bold hover:bg-gray-400"
+                onClick={() => setShowDeleteAll(false)}
+              >
+                לא
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {formatModal.open && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-[300px] text-center">
@@ -465,19 +490,19 @@ export default function Dashboard() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => handleFileOpen(formatModal.file, "txt")}
-                className="bg-[#f5f5f5] hover:bg-[#b347ff] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
+                className="bg-[#f5f5f5] hover:bg-[#8a3ffc] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
               >
                 📝 קובץ TXT
               </button>
               <button
                 onClick={() => handleFileOpen(formatModal.file, "pdf")}
-                className="bg-[#f5f5f5] hover:bg-[#ff6f00] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
+                className="bg-[#f5f5f5] hover:bg-[#5b2aa1] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
               >
                 📄 קובץ PDF
               </button>
               <button
                 onClick={() => handleFileOpen(formatModal.file, "docx")}
-                className="bg-[#f5f5f5] hover:bg-[#0078d4] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
+                className="bg-[#f5f5f5] hover:bg-[#3a3aff] hover:text-white text-gray-700 py-2 rounded-lg font-medium transition"
               >
                 📘 קובץ Word
               </button>
